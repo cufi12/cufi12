@@ -116,6 +116,33 @@ app.get("/api/status", async (_req, res) => {
 });
 
 
+
+app.get("/api/tmdb/search", async (req, res) => {
+  try {
+    const apiKey = String(process.env.TMDB_API_KEY || "").trim();
+    if (!apiKey) return res.status(503).json({ error: "TMDB ist noch nicht eingerichtet. Bitte TMDB_API_KEY in Render unter Environment hinterlegen." });
+    const q = String(req.query.q || "").trim().slice(0, 100);
+    if (q.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
+    const params = new URLSearchParams({ query: q, include_adult: "false", language: "de-DE", page: "1" });
+    const response = await fetch("https://api.themoviedb.org/3/search/multi?" + params, {
+      headers: { "Accept": "application/json", "Authorization": "Bearer " + apiKey }
+    });
+    if (!response.ok) throw new Error("TMDB antwortet mit HTTP " + response.status);
+    const data = await response.json();
+    const results = (Array.isArray(data.results) ? data.results : [])
+      .filter(x => x.media_type === "movie" || x.media_type === "tv")
+      .slice(0, 15)
+      .map(x => ({
+        id: x.id, mediaType: x.media_type, title: x.title || x.name || "",
+        year: (x.release_date || x.first_air_date || "").slice(0, 4),
+        overview: x.overview || "",
+        image: x.poster_path ? "https://image.tmdb.org/t/p/w342" + x.poster_path : "",
+        url: "https://www.themoviedb.org/" + (x.media_type === "tv" ? "tv/" : "movie/") + x.id
+      }));
+    res.json({ results });
+  } catch (e) { res.status(502).json({ error: "TMDB-Suche fehlgeschlagen: " + e.message }); }
+});
+
 app.get("/api/imdb/search", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().slice(0, 100);
