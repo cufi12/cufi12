@@ -115,6 +115,25 @@ app.get("/api/status", async (_req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+
+app.get("/api/imdb/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 100);
+    if (q.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
+    const response = await fetch("https://v2.sg.media-imdb.com/suggestion/x/" + encodeURIComponent(q) + ".json", {
+      headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0 Real-Debrid-Manager" }
+    });
+    if (!response.ok) throw new Error("IMDb antwortet mit HTTP " + response.status);
+    const data = await response.json();
+    const results = (Array.isArray(data.d) ? data.d : []).filter(x => x.id && (x.qid === "movie" || x.qid === "tvSeries" || x.qid === "tvMiniSeries")).slice(0, 15).map(x => ({
+      id: x.id, title: x.l || "", year: x.y || "", kind: x.q || "",
+      description: x.s || "", image: x.i?.imageUrl || "",
+      url: "https://www.imdb.com/title/" + encodeURIComponent(x.id) + "/"
+    }));
+    res.json({ results });
+  } catch (e) { res.status(502).json({ error: "IMDb-Suche fehlgeschlagen: " + e.message }); }
+});
+
 app.get("/api/tvmaze/search", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().slice(0, 100);
