@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#101522"><title>Real-Debrid Manager</title>
+<meta name="theme-color" content="#101522"><meta name="description" content="Persönliches Real-Debrid-Dashboard"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/icon.svg"><title>Real-Debrid Manager</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#101522;color:#f4f6fb}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(150deg,#101522,#17243a);min-height:100vh}
@@ -78,4 +78,5 @@ $('tvmazeQuery').addEventListener('keydown',e=>{if(e.key==='Enter')$('tvmazeSear
 $('addMagnet').onclick=async()=>{try{const magnet=$('magnet').value.trim();if(!magnet.startsWith('magnet:?'))throw new Error('Bitte einen gültigen Magnet-Link einfügen.');const d=await api('/api/torrents/add-magnet',{method:'POST',body:JSON.stringify({magnet})});$('magnetMessage').textContent='Torrent hinzugefügt (ID: '+(d.id||'ok')+').';$('magnet').value='';}catch(e){$('magnetMessage').textContent=e.message}};
 $('disconnect').onclick=async()=>{await api('/api/disconnect',{method:'POST',body:'{}'});$('dashboard').classList.add('hidden');$('connection').textContent='Nicht verbunden';msg('Verbindung getrennt.')};
 status();
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {})); }
 </script></body></html>
