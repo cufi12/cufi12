@@ -115,6 +115,35 @@ app.get("/api/status", async (_req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+app.get("/api/tvmaze/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 100);
+    if (q.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
+    const response = await fetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(q));
+    if (!response.ok) throw new Error("TVmaze antwortet mit HTTP " + response.status);
+    const results = await response.json();
+    res.json({ results: (Array.isArray(results) ? results : []).slice(0, 15).map(x => ({
+      id: x.show?.id, name: x.show?.name || "", summary: x.show?.summary || "",
+      premiered: x.show?.premiered || "", ended: x.show?.ended || "", status: x.show?.status || "",
+      genres: x.show?.genres || [], image: x.show?.image?.medium || x.show?.image?.original || "", url: x.show?.url || ""
+    })) });
+  } catch (e) { res.status(502).json({ error: "TVmaze-Suche fehlgeschlagen: " + e.message }); }
+});
+
+app.get("/api/tvmaze/shows/:id/episodes", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!/^\d+$/.test(id)) return res.status(400).json({ error: "Ungültige Serien-ID." });
+    const response = await fetch("https://api.tvmaze.com/shows/" + id + "/episodes");
+    if (!response.ok) throw new Error("TVmaze antwortet mit HTTP " + response.status);
+    const episodes = await response.json();
+    res.json({ episodes: (Array.isArray(episodes) ? episodes : []).map(ep => ({
+      name: ep.name || "", season: ep.season, number: ep.number, airdate: ep.airdate || "",
+      runtime: ep.runtime || null, summary: ep.summary || ""
+    })) });
+  } catch (e) { res.status(502).json({ error: "Episoden konnten nicht geladen werden: " + e.message }); }
+});
+
 app.get("/api/torrents", async (_req, res) => {
   try { res.json(await rdApi("/torrents")); }
   catch (e) { res.status(502).json({ error: e.message }); }
