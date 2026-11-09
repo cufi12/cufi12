@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101522"><title>Real-Debrid Manager</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#101522;color:#f4f6fb}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(150deg,#101522,#17243a);min-height:100vh}
+main{max-width:850px;margin:auto;padding:24px 16px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:clamp(25px,5vw,36px);margin:0}.muted{color:#aab5c7}.panel{background:#1b2638;border:1px solid #33435c;border-radius:18px;padding:18px;margin-top:18px;box-shadow:0 12px 30px #0002}
+button,input{font:inherit;border-radius:12px;padding:12px 14px;border:1px solid #536580;background:#111b2b;color:#fff}
+button{background:#4169e1;border:0;font-weight:650;cursor:pointer}button.secondary{background:#33435c}button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.code{font-size:28px;letter-spacing:3px;font-weight:800;background:#101522;border:1px dashed #7185a5;border-radius:12px;padding:14px;text-align:center;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.stat{background:#111b2b;border-radius:12px;padding:14px}.stat strong{display:block;font-size:22px;margin-top:5px}
+.item{padding:12px 0;border-bottom:1px solid #33435c;overflow-wrap:anywhere}.item:last-child{border:0}.hidden{display:none}.good{color:#7ee0ad}.bad{color:#ff9b9b}a{color:#9fc2ff}small{color:#aab5c7}
+</style></head>
+<body><main>
+<div class="top"><div><h1>Real-Debrid Manager</h1><div class="muted">Dein persönliches Dashboard</div></div><span id="connection" class="muted">Nicht verbunden</span></div>
+<section class="panel" id="connectPanel"><h2>Real-Debrid verbinden</h2><p class="muted">Starte die Geräte-Autorisierung. Öffne anschließend Real-Debrid und gib den angezeigten Code ein.</p>
+<div class="row"><button id="start">Mit Real-Debrid verbinden</button><button id="refresh" class="secondary">Status aktualisieren</button></div>
+<div id="device" class="hidden"><div class="code" id="userCode"></div><p><a id="verify" href="https://real-debrid.com/device" target="_blank" rel="noopener">Real-Debrid Autorisierung öffnen</a></p><p class="muted" id="pollText">Warte auf deine Bestätigung …</p></div><p id="message" class="muted" aria-live="polite"></p></section>
+<section id="dashboard" class="hidden">
+<div class="panel"><div class="top"><h2>Dein Konto</h2><button id="disconnect" class="secondary">Trennen</button></div><div class="grid" id="stats"></div></div>
+<div class="panel"><div class="top"><h2>Torrents</h2><button id="loadTorrents" class="secondary">Neu laden</button></div><div id="torrents" class="muted">Noch nicht geladen.</div></div>
+<div class="panel"><div class="top"><h2>Downloads</h2><button id="loadDownloads" class="secondary">Neu laden</button></div><div id="downloads" class="muted">Noch nicht geladen.</div></div>
+<div class="panel"><h2>Magnet-Link hinzufügen</h2><p class="muted">Füge nur Inhalte hinzu, zu deren Nutzung und Download du berechtigt bist.</p><div class="row"><input id="magnet" style="flex:1;min-width:220px" placeholder="magnet:?xt=urn:btih:…" autocomplete="off"><button id="addMagnet">Hinzufügen</button></div><p id="magnetMessage" class="muted"></p></div>
+</section>
+<footer class="muted" style="margin-top:22px"><small>Inoffizielles privates Hilfsprogramm. Nicht mit Real-Debrid verbunden oder unterstützt. Zugangsdaten bleiben im laufenden Serverprozess; bei Neustart musst du dich erneut verbinden.</small></footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Anfrage fehlgeschlagen');return data}
+function msg(text,bad=false){$('message').textContent=text;$('message').className=bad?'bad':'muted'}
+let pollTimer=null;
+$('start').onclick=async()=>{try{$('start').disabled=true;msg('Autorisierung wird gestartet …');const d=await api('/api/device/start',{method:'POST',body:'{}'});$('device').classList.remove('hidden');$('userCode').textContent=d.user_code;$('verify').href=d.verification_url||'https://real-debrid.com/device';msg('Code auf der Real-Debrid-Seite eingeben.');clearInterval(pollTimer);pollTimer=setInterval(poll,Math.max(5,d.interval||5)*1000);setTimeout(()=>{clearInterval(pollTimer);$('start').disabled=false;msg('Code möglicherweise abgelaufen. Bei Bedarf neu starten.',true)},d.expires_in*1000)}catch(e){msg(e.message,true);$('start').disabled=false}};
+async function poll(){try{const d=await api('/api/device/poll',{method:'POST',body:'{}'});if(d.connected){clearInterval(pollTimer);$('device').classList.add('hidden');$('start').disabled=false;msg('Erfolgreich verbunden.');await status()}}catch(e){msg(e.message,true);clearInterval(pollTimer);$('start').disabled=false}}
+async function status(){try{const d=await api('/api/status');if(!d.connected){$('connection').textContent='Nicht verbunden';$('dashboard').classList.add('hidden');return} $('connection').innerHTML='<span class="good">● Verbunden</span>';$('dashboard').classList.remove('hidden');$('stats').innerHTML=[['Benutzer',d.user.username||'—'],['Konto',d.user.type||'—'],['Premium-Sekunden',Number(d.user.premium||0).toLocaleString('de-DE')],['Ablauf',d.user.expiration?new Date(d.user.expiration).toLocaleDateString('de-DE'):'—']].map(([a,b])=>'<div class="stat"><small>'+a+'</small><strong>'+String(b)+'</strong></div>').join('')}catch(e){msg(e.message,true)}}
+function renderList(target,items){$(target).innerHTML=Array.isArray(items)&&items.length?items.map(x=>'<div class="item"><strong>'+esc(x.filename||x.original_filename||'Datei')+'</strong><div class="muted">'+esc(x.status||x.host||'')+' · '+(x.progress??'—')+'%</div></div>').join(''):'<p class="muted">Keine Einträge gefunden.</p>'}
+function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('refresh').onclick=status;
+$('loadTorrents').onclick=async()=>{try{renderList('torrents',await api('/api/torrents'))}catch(e){$('torrents').textContent=e.message}};
+$('loadDownloads').onclick=async()=>{try{renderList('downloads',await api('/api/downloads'))}catch(e){$('downloads').textContent=e.message}};
+$('addMagnet').onclick=async()=>{try{const magnet=$('magnet').value.trim();if(!magnet.startsWith('magnet:?'))throw new Error('Bitte einen gültigen Magnet-Link einfügen.');const d=await api('/api/torrents/add-magnet',{method:'POST',body:JSON.stringify({magnet})});$('magnetMessage').textContent='Torrent hinzugefügt (ID: '+(d.id||'ok')+').';$('magnet').value='';}catch(e){$('magnetMessage').textContent=e.message}};
+$('disconnect').onclick=async()=>{await api('/api/disconnect',{method:'POST',body:'{}'});$('dashboard').classList.add('hidden');$('connection').textContent='Nicht verbunden';msg('Verbindung getrennt.')};
+status();
+</script></body></html>
