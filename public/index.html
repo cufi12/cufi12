@@ -22,6 +22,8 @@ button{background:#4169e1;border:0;font-weight:650;cursor:pointer}button.seconda
 <section id="dashboard" class="hidden">
 <div class="panel"><div class="top"><h2>Dein Konto</h2><button id="disconnect" class="secondary">Trennen</button></div><div class="grid" id="stats"></div></div>
 <div class="panel"><h2>Bibliothek durchsuchen</h2><input id="searchItems" type="search" style="width:100%" placeholder="Name, Status oder Host suchen …" autocomplete="off"><p id="searchSummary" class="muted">Durchsuche deine geladenen Torrents und Downloads.</p></div>
+<div class="panel"><h2>Filmsuche – gemeinfreie Filme</h2><p class="muted">Suche im Internet Archive. Angezeigt werden nur Treffer mit erkennbarem Public-Domain-Hinweis. Bitte Rechtehinweise auf der Quellseite prüfen.</p><div class="row"><input id="archiveQuery" style="flex:1;min-width:180px" placeholder="Filmtitel suchen …" autocomplete="off"><button id="archiveSearch">Suchen</button></div><div id="archiveResults" class="muted" style="margin-top:12px">Suchbegriff eingeben.</div></div>
+
 <div class="panel"><div class="top"><h2>Torrents</h2><button id="loadTorrents" class="secondary">Neu laden</button></div><div id="torrents" class="muted">Noch nicht geladen.</div></div>
 <div class="panel"><div class="top"><h2>Downloads</h2><button id="loadDownloads" class="secondary">Neu laden</button></div><div id="downloads" class="muted">Noch nicht geladen.</div></div>
 <div class="panel"><h2>Magnet-Link hinzufügen</h2><p class="muted">Füge nur Inhalte hinzu, zu deren Nutzung und Download du berechtigt bist.</p><div class="row"><input id="magnet" style="flex:1;min-width:220px" placeholder="magnet:?xt=urn:btih:…" autocomplete="off"><button id="addMagnet">Hinzufügen</button></div><p id="magnetMessage" class="muted"></p></div>
@@ -46,6 +48,10 @@ $('refresh').onclick=status;
 $('loadTorrents').onclick=async()=>{try{torrentItems=await api('/api/torrents');renderLibrary()}catch(e){$('torrents').textContent=e.message}};
 $('loadDownloads').onclick=async()=>{try{downloadItems=await api('/api/downloads');renderLibrary()}catch(e){$('downloads').textContent=e.message}};
 $('searchItems').addEventListener('input',renderLibrary);
+
+$('archiveSearch').onclick=async()=>{const q=$('archiveQuery').value.trim();if(q.length<2){$('archiveResults').textContent='Bitte mindestens 2 Zeichen eingeben.';return}const b=$('archiveSearch');b.disabled=true;$('archiveResults').textContent='Suche läuft …';try{const d=await api('/api/library-search?q='+encodeURIComponent(q));$('archiveResults').innerHTML=d.results.length?d.results.map(x=>'<div class="item"><strong>'+esc(x.title)+'</strong><div class="muted">'+esc(x.creator||'Unbekannter Urheber')+(x.year?' · '+esc(x.year):'')+'</div><p><a href="'+esc(x.itemUrl)+'" target="_blank" rel="noopener noreferrer">Quelle und Rechte ansehen ↗</a>'+(x.torrentUrl?' · <a href="'+esc(x.torrentUrl)+'">Torrent-Datei ↗</a>':'')+'</p></div>').join(''):'Keine Treffer mit eindeutigem Public-Domain-Hinweis gefunden. Probiere einen anderen Suchbegriff.'}catch(e){$('archiveResults').textContent=e.message}finally{b.disabled=false}};
+$('archiveQuery').addEventListener('keydown',e=>{if(e.key==='Enter')$('archiveSearch').click()});
+
 $('addMagnet').onclick=async()=>{try{const magnet=$('magnet').value.trim();if(!magnet.startsWith('magnet:?'))throw new Error('Bitte einen gültigen Magnet-Link einfügen.');const d=await api('/api/torrents/add-magnet',{method:'POST',body:JSON.stringify({magnet})});$('magnetMessage').textContent='Torrent hinzugefügt (ID: '+(d.id||'ok')+').';$('magnet').value='';}catch(e){$('magnetMessage').textContent=e.message}};
 $('disconnect').onclick=async()=>{await api('/api/disconnect',{method:'POST',body:'{}'});$('dashboard').classList.add('hidden');$('connection').textContent='Nicht verbunden';msg('Verbindung getrennt.')};
 status();
