@@ -15,7 +15,7 @@ let credentials = null;
 let tokens = null;
 
 app.use((req, res, next) => {
-  if (req.path === "/health") return next();
+  if (req.path === "/health" || req.path.startsWith("/nuvio/")) return next();
   if (!APP_PASSWORD) return res.status(503).send("Admin setup required: set APP_PASSWORD in the service environment.");
   const auth = req.headers.authorization || "";
   const supplied = auth.startsWith("Basic ") ? Buffer.from(auth.slice(6), "base64").toString("utf8") : "";
@@ -175,6 +175,100 @@ app.post("/api/torrents/add-magnet", async (req, res) => {
     });
     res.json(result);
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+
+function nuvioAuthorized(req, res) {
+  const supplied = String(req.params.key || "");
+  const expected = String(process.env.NUVIO_ADDON_KEY || "");
+  const a = crypto.createHash("sha256").update(supplied).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  if (!expected || !crypto.timingSafeEqual(a, b)) {
+    res.status(404).json({ error: "Not found" });
+    return false;
+  }
+  return true;
+}
+
+function libraryType(filename) {
+  return /S\d{1,2}E\d{1,2}|\bseason\s*\d+/i.test(filename) ? "series" : "movie";
+}
+
+function isHttps(value) {
+  try { return new URL(value).protocol === "https:"; } catch { return false; }
+}
+
+async function nuvioLibrary() {
+  const items = await rdApi("/downloads");
+  return (Array.isArray(items) ? items : []).filter(x => x && (x.download || x.link));
+}
+
+app.get("/nuvio/:key/manifest.json", (req, res) => {
+  if (!nuvioAuthorized(req, res)) return;
+  res.json({
+    id: "com.cufi12.realdebrid.library",
+    version: "1.0.0",
+    name: "Meine Real-Debrid-Bibliothek",
+    description: "Spielt Dateien aus deiner eigenen Real-Debrid-Downloadliste ab.",
+    resources: ["catalog", "meta", "stream"],
+    types: ["movie", "series"],
+    catalogs: [
+      { type: "movie", id: "rd-library-movies", name: "Meine RD-Filme" },
+      { type: "series", id: "rd-library-series", name: "Meine RD-Serien" }
+    ],
+    idPrefixes: ["rd:"]
+  });
+});
+
+app.get("/nuvio/:key/catalog/:type/:catalogId.json", async (req, res) => {
+  if (!nuvioAuthorized(req, res)) return;
+  try {
+    const type = req.params.type;
+    const expectedCatalog = type === "series" ? "rd-library-series" : "rd-library-movies";
+    if (!["movie", "series"].includes(type) || req.params.catalogId !== expectedCatalog) return res.json({ metas: [] });
+    const items = await nuvioLibrary();
+    const metas = items.filter(x => libraryType(String(x.filename || x.original_filename || "")) === type)
+      .map(x => ({
+        id: "rd:" + String(x.id),
+        type,
+        name: String(x.filename || x.original_filename || "Real-Debrid-Datei"),
+        description: "Aus deiner Real-Debrid-Downloadliste"
+      }));
+    res.json({ metas });
+  } catch (e) { res.status(502).json({ metas: [], error: e.message }); }
+});
+
+app.get("/nuvio/:key/meta/:type/:id.json", async (req, res) => {
+  if (!nuvioAuthorized(req, res)) return;
+  try {
+    const id = decodeURIComponent(req.params.id).replace(/^rd:/, "");
+    const items = await nuvioLibrary();
+    const item = items.find(x => String(x.id) === id);
+    if (!item) return res.json({ meta: null });
+    const name = String(item.filename || item.original_filename || "Real-Debrid-Datei");
+    res.json({ meta: { id: "rd:" + String(item.id), type: libraryType(name), name, description: "Real-Debrid-Download" } });
+  } catch (e) { res.status(502).json({ meta: null, error: e.message }); }
+});
+
+app.get("/nuvio/:key/stream/:type/:id.json", async (req, res) => {
+  if (!nuvioAuthorized(req, res)) return;
+  try {
+    const id = decodeURIComponent(req.params.id).replace(/^rd:/, "");
+    const items = await nuvioLibrary();
+    const item = items.find(x => String(x.id) === id);
+    if (!item) return res.json({ streams: [] });
+    let url = String(item.download || "");
+    if (!isHttps(url) && item.link) {
+      const token = await accessToken();
+      const body = new URLSearchParams({ link: String(item.link) });
+      const resolved = await rdFetch(API + "/unrestrict/link?auth_token=" + encodeURIComponent(token), {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body
+      });
+      url = String(resolved.download || "");
+    }
+    if (!isHttps(url)) return res.json({ streams: [] });
+    res.json({ streams: [{ name: "Real-Debrid", title: "Direkt abspielen", url }] });
+  } catch (e) { res.status(502).json({ streams: [], error: e.message }); }
 });
 
 app.post("/api/disconnect", (_req, res) => {
