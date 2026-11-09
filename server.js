@@ -116,6 +116,73 @@ app.get("/api/status", async (_req, res) => {
 });
 
 
+app.get("/api/mdblist/search", async (req, res) => {
+  try {
+    const key = String(process.env.MDBLIST_API_KEY || "").trim();
+    if (!key) return res.status(503).json({ error: "MDBList API-Key fehlt in Render." });
+    const q = String(req.query.q || "").trim().slice(0, 100);
+    if (q.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
+    const fetchType = async type => {
+      const url = new URL("https://api.mdblist.com/search/" + type);
+      url.searchParams.set("query", q);
+      url.searchParams.set("apikey", key);
+      const response = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) throw new Error("MDBList antwortet mit HTTP " + response.status);
+      const data = await response.json();
+      return Array.isArray(data) ? data : (data.results || data.items || []);
+    };
+    const [movies, shows] = await Promise.all([fetchType("movie"), fetchType("show")]);
+    const results = [...movies, ...shows].slice(0, 20).map(x => ({
+      title: x.title || x.name || "",
+      year: x.year || (x.released ? String(x.released).slice(0,4) : ""),
+      type: x.mediatype || x.media_type || x.type || "",
+      imdb: x.imdb_id || x.imdbid || "",
+      tmdb: x.tmdbid || x.tmdb_id || "",
+      score: x.score ?? x.ratings?.[0]?.value ?? "",
+      ratings: Array.isArray(x.ratings) ? x.ratings : [],
+      overview: x.overview || x.plot || "",
+      poster: x.poster || x.poster_path || "",
+      url: x.imdb_id ? "https://www.imdb.com/title/" + x.imdb_id + "/" : ""
+    }));
+    res.json({ results });
+  } catch (e) { res.status(502).json({ error: "MDBList-Suche fehlgeschlagen: " + e.message }); }
+});
+
+app.post("/api/gemini/recommend", async (req, res) => {
+  try {
+    const key = String(process.env.GEMINI_API_KEY || "").trim();
+    if (!key) return res.status(503).json({ error: "Gemini API-Key fehlt in Render." });
+    const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
+    if (prompt.length < 2) return res.status(400).json({ error: "Bitte beschreibe kurz, wonach du suchst." });
+    const query = String(req.body?.query || prompt).trim().slice(0, 100);
+    const mdblistKey = String(process.env.MDBLIST_API_KEY || "").trim();
+    if (!mdblistKey) return res.status(503).json({ error: "MDBList API-Key fehlt in Render." });
+    const lookup = async type => {
+      const url = new URL("https://api.mdblist.com/search/" + type);
+      url.searchParams.set("query", query);
+      url.searchParams.set("apikey", mdblistKey);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("MDBList antwortet mit HTTP " + response.status);
+      const data = await response.json();
+      return Array.isArray(data) ? data : (data.results || data.items || []);
+    };
+    const [movies, shows] = await Promise.all([lookup("movie"), lookup("show")]);
+    const candidates = [...movies, ...shows].slice(0, 20).map(x => ({
+      title: x.title || x.name, year: x.year, type: x.mediatype || x.media_type || x.type,
+      imdb: x.imdb_id || x.imdbid, tmdb: x.tmdbid || x.tmdb_id,
+      ratings: x.ratings, overview: x.overview || x.plot
+    }));
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({ contents: [{ parts: [{ text: "Du bist ein Film- und Serienberater. Nutze ausschließlich die folgenden MDBList-Treffer als belegte Titel. Erfinde keine Titel, Bewertungen oder Fakten. Wenn die Treffer nicht passen, sage das klar. Antworte auf Deutsch und begründe kurz deine Auswahl.\n\nSuchwunsch: " + prompt + "\n\nMDBList-Treffer: " + JSON.stringify(candidates) }] }] })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || ("Gemini antwortet mit HTTP " + response.status));
+    const answer = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n").trim();
+    res.json({ answer, candidates });
+  } catch (e) { res.status(502).json({ error: "Gemini/MDBList-Anfrage fehlgeschlagen: " + e.message }); }
+});
 
 app.get("/api/tmdb/search", async (req, res) => {
   try {
