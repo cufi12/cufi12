@@ -125,6 +125,45 @@ app.get("/api/downloads", async (_req, res) => {
   catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+
+app.get("/api/library-search", async (req, res) => {
+  try {
+    const term = String(req.query.q || "").trim().slice(0, 100);
+    if (term.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
+    const phrase = '"' + term.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+    const query = 'mediatype:movies AND (title:' + phrase + ' OR creator:' + phrase + ')';
+    const searchUrl = new URL("https://archive.org/advancedsearch.php");
+    searchUrl.searchParams.set("q", query);
+    searchUrl.searchParams.set("fl[]", "identifier,title,creator,date,year,licenseurl,rights");
+    searchUrl.searchParams.set("rows", "12");
+    searchUrl.searchParams.set("output", "json");
+    const found = await rdFetch(searchUrl.toString());
+    const docs = found.response?.docs || [];
+    const results = await Promise.all(docs.map(async item => {
+      const license = String(item.licenseurl || "");
+      const rights = String(item.rights || "");
+      const publicDomain = /creativecommons\\.org\\/publicdomain|public domain/i.test(license + " " + rights);
+      if (!publicDomain) return null;
+      let torrentUrl = "";
+      try {
+        const metadata = await rdFetch("https://archive.org/metadata/" + encodeURIComponent(item.identifier));
+        const torrent = (metadata.files || []).find(file => String(file.name || "").toLowerCase().endsWith(".torrent"));
+        if (torrent) torrentUrl = "https://archive.org/download/" + encodeURIComponent(item.identifier) + "/" + encodeURIComponent(torrent.name);
+      } catch {}
+      return {
+        title: item.title || item.identifier,
+        creator: item.creator || "",
+        year: item.year || item.date || "",
+        identifier: item.identifier,
+        itemUrl: "https://archive.org/details/" + encodeURIComponent(item.identifier),
+        torrentUrl,
+        license
+      };
+    }));
+    res.json({ source: "Internet Archive", results: results.filter(Boolean) });
+  } catch (e) { res.status(502).json({ error: "Suche im Internet Archive fehlgeschlagen: " + e.message }); }
+});
+
 app.post("/api/torrents/add-magnet", async (req, res) => {
   try {
     const magnet = String(req.body?.magnet || "").trim();
