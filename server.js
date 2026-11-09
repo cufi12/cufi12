@@ -209,12 +209,12 @@ app.get("/nuvio/:key/manifest.json", (req, res) => {
     id: "com.cufi12.realdebrid.library",
     version: "1.0.0",
     name: "Meine Real-Debrid-Bibliothek",
-    description: "Spielt Dateien aus deiner eigenen Real-Debrid-Downloadliste ab.",
+    description: "Durchsucht deine eigene Real-Debrid-Downloadliste nach Filmtiteln und Serien.",
     resources: ["catalog", "meta", "stream"],
     types: ["movie", "series"],
     catalogs: [
-      { type: "movie", id: "rd-library-movies", name: "Meine RD-Filme" },
-      { type: "series", id: "rd-library-series", name: "Meine RD-Serien" }
+      { type: "movie", id: "rd-library-movies", name: "Meine RD-Filme", extra: [{ name: "search", isRequired: true }] },
+      { type: "series", id: "rd-library-series", name: "Meine RD-Serien", extra: [{ name: "search", isRequired: true }] }
     ],
     idPrefixes: ["rd:"]
   });
@@ -226,9 +226,12 @@ app.get("/nuvio/:key/catalog/:type/:catalogId.json", async (req, res) => {
     const type = req.params.type;
     const expectedCatalog = type === "series" ? "rd-library-series" : "rd-library-movies";
     if (!["movie", "series"].includes(type) || req.params.catalogId !== expectedCatalog) return res.json({ metas: [] });
+    const search = String(req.query.search || "").trim().slice(0, 100).toLocaleLowerCase();
     const items = await nuvioLibrary();
-    const metas = items.filter(x => libraryType(String(x.filename || x.original_filename || "")) === type)
-      .map(x => ({
+    const metas = items.filter(x => {
+      const filename = String(x.filename || x.original_filename || "");
+      return libraryType(filename) === type && (!search || filename.toLocaleLowerCase().includes(search));
+    }).map(x => ({
         id: "rd:" + String(x.id),
         type,
         name: String(x.filename || x.original_filename || "Real-Debrid-Datei"),
