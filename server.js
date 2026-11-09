@@ -142,7 +142,7 @@ app.get("/api/library-search", async (req, res) => {
     const results = await Promise.all(docs.map(async item => {
       const license = String(item.licenseurl || "");
       const rights = String(item.rights || "");
-      const publicDomain = /creativecommons\\.org\\/publicdomain|public domain/i.test(license + " " + rights);
+      const publicDomain = license.toLowerCase().includes("creativecommons.org/publicdomain") || rights.toLowerCase().includes("public domain");
       if (!publicDomain) return null;
       let torrentUrl = "";
       try {
