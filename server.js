@@ -18,8 +18,11 @@ app.use((req, res, next) => {
   if (req.path === "/health") return next();
   if (!APP_PASSWORD) return res.status(503).send("Admin setup required: set APP_PASSWORD in the service environment.");
   const auth = req.headers.authorization || "";
-  const expected = "Basic " + Buffer.from("manager:" + APP_PASSWORD).toString("base64");
-  if (!crypto.timingSafeEqual(Buffer.from(auth.padEnd(expected.length)), Buffer.from(expected.padEnd(auth.length || 0))) || auth !== expected) {
+  const supplied = auth.startsWith("Basic ") ? Buffer.from(auth.slice(6), "base64").toString("utf8") : "";
+  const expected = "manager:" + APP_PASSWORD;
+  const suppliedHash = crypto.createHash("sha256").update(supplied).digest();
+  const expectedHash = crypto.createHash("sha256").update(expected).digest();
+  if (!crypto.timingSafeEqual(suppliedHash, expectedHash)) {
     res.setHeader("WWW-Authenticate", 'Basic realm="Real-Debrid Manager"');
     return res.status(401).send("Login required");
   }
@@ -66,7 +69,9 @@ async function accessToken() {
 
 async function rdApi(path) {
   const token = await accessToken();
-  return rdFetch(API + path, { headers: { Authorization: "Bearer " + token } });
+  const url = new URL(API + path);
+  url.searchParams.set("auth_token", token);
+  return rdFetch(url.toString());
 }
 
 app.post("/api/device/start", async (_req, res) => {
@@ -118,6 +123,19 @@ app.get("/api/torrents", async (_req, res) => {
 app.get("/api/downloads", async (_req, res) => {
   try { res.json(await rdApi("/downloads")); }
   catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post("/api/torrents/add-magnet", async (req, res) => {
+  try {
+    const magnet = String(req.body?.magnet || "").trim();
+    if (!magnet.startsWith("magnet:?")) return res.status(400).json({ error: "Ungültiger Magnet-Link." });
+    const token = await accessToken();
+    const body = new URLSearchParams({ magnet });
+    const result = await rdFetch(API + "/torrents/addMagnet?auth_token=" + encodeURIComponent(token), {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body
+    });
+    res.json(result);
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 app.post("/api/disconnect", (_req, res) => {
