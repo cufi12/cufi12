@@ -123,9 +123,9 @@ app.get("/api/tmdb/search", async (req, res) => {
     if (!apiKey) return res.status(503).json({ error: "TMDB ist noch nicht eingerichtet. Bitte TMDB_API_KEY in Render unter Environment hinterlegen." });
     const q = String(req.query.q || "").trim().slice(0, 100);
     if (q.length < 2) return res.status(400).json({ error: "Bitte mindestens 2 Zeichen eingeben." });
-    const params = new URLSearchParams({ query: q, include_adult: "false", language: "de-DE", page: "1" });
+    const params = new URLSearchParams({ query: q, include_adult: "false", language: "de-DE", page: "1", api_key: apiKey });
     const response = await fetch("https://api.themoviedb.org/3/search/multi?" + params, {
-      headers: { "Accept": "application/json", "Authorization": "Bearer " + apiKey }
+      headers: { "Accept": "application/json" }
     });
     if (!response.ok) throw new Error("TMDB antwortet mit HTTP " + response.status);
     const data = await response.json();
