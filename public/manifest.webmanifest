@@ -1,0 +1,19 @@
+{
+  "name": "Real-Debrid Manager",
+  "short_name": "RD Manager",
+  "description": "Persönliches Real-Debrid-Dashboard",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#101522",
+  "theme_color": "#101522",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
