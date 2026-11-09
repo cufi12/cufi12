@@ -336,6 +336,22 @@ function libraryType(filename) {
   return /S\d{1,2}E\d{1,2}|\bseason\s*\d+/i.test(filename) ? "series" : "movie";
 }
 
+function videoQuality(filename) {
+  const name = String(filename || "").toLowerCase();
+  if (/\b(2160p|4k|uhd)\b/.test(name)) return "4K";
+  if (/\b(1080p|full[ ._-]?hd)\b/.test(name)) return "1080p";
+  if (/\b(720p|hd)\b/.test(name)) return "720p";
+  if (/\b(480p|576p|sd)\b/.test(name)) return "SD";
+  return "Qualität nicht erkannt";
+}
+
+function audioLanguage(filename) {
+  const name = String(filename || "").toLowerCase();
+  if (/\b(german|deutsch|deu|ger|dubbing|dubbed|dl)\b/.test(name)) return "Deutsch laut Dateiname";
+  if (/\b(english|eng)\b/.test(name)) return "Englisch laut Dateiname";
+  return "Sprache nicht erkannt";
+}
+
 function isHttps(value) {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
@@ -391,7 +407,7 @@ app.get("/nuvio/:key/meta/:type/:id.json", async (req, res) => {
     const item = items.find(x => String(x.id) === id);
     if (!item) return res.json({ meta: null });
     const name = String(item.filename || item.original_filename || "Real-Debrid-Datei");
-    res.json({ meta: { id: "rd:" + String(item.id), type: libraryType(name), name, description: "Real-Debrid-Download" } });
+    res.json({ meta: { id: "rd:" + String(item.id), type: libraryType(name), name, description: videoQuality(name) + " · " + audioLanguage(name) + " · Real-Debrid-Download" } });
   } catch (e) { res.status(502).json({ meta: null, error: e.message }); }
 });
 
@@ -412,7 +428,8 @@ app.get("/nuvio/:key/stream/:type/:id.json", async (req, res) => {
       url = String(resolved.download || "");
     }
     if (!isHttps(url)) return res.json({ streams: [] });
-    res.json({ streams: [{ name: "Real-Debrid", title: "Direkt abspielen", url }] });
+    const filename = String(item.filename || item.original_filename || "");
+    res.json({ streams: [{ name: "Real-Debrid", title: "Direkt abspielen · " + videoQuality(filename) + " · " + audioLanguage(filename), url }] });
   } catch (e) { res.status(502).json({ streams: [], error: e.message }); }
 });
 
